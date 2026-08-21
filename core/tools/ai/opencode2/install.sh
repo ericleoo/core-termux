@@ -134,6 +134,63 @@ _opencode2_copy_platform_binary() {
   fi
   cp -f "$src" "$cli_dir/bin/opencode2.exe" 2>>"$LOG_FILE" || true
   chmod +x "$cli_dir/bin/opencode2" "$cli_dir/bin/opencode2.exe" 2>>"$LOG_FILE" || true
+
+  _opencode2_patch_execpath || true
+  return 0
+}
+
+# Byte-patch the bundled resolver inside the compiled Bun binary:
+#   process.execPath -> process.argv[0]  (same length, offsets preserved)
+# Why: under the Termux glibc wrapper, /proc/self/exe is the LOADER file, so
+# opencode's background-service spawn ([execPath, "serve", "--service"])
+# becomes `ld-linux-aarch64.so.1 serve ...` -> exit 127. With argv[0] the
+# spawn goes through this package's bun shim instead. Never use patchelf on
+# these binaries: any section move corrupts Bun's embedded module table.
+_opencode2_patch_execpath() {
+  local patched=0 f
+  for f in \
+    "$PREFIX/lib/node_modules/@opencode-ai/cli/bin/opencode2" \
+    "$PREFIX/lib/node_modules/@opencode-ai/cli/bin/opencode2.exe" \
+    "$PREFIX/lib/node_modules/@opencode-ai/cli/node_modules/@opencode-ai/cli-linux-arm64/bin/opencode2"
+  do
+    [ -f "$f" ] || continue
+    if LC_ALL=C grep -qF 'process.execPath' "$f" 2>/dev/null; then
+      if LC_ALL=C sed -i -b 's/process\.execPath/process.argv[0] /g' "$f" 2>>"$LOG_FILE"; then
+        log_ok "Patched execPath resolver in ${f##*/bin/} ($f)"
+      else
+        log_warn "Failed to patch $f (wrapper self-heal will retry at launch)"
+      fi
+    fi
+    patched=1
+  done
+  mkdir -p "${XDG_CACHE_HOME:-$HOME/.cache}/opencode2"
+  touch "${XDG_CACHE_HOME:-$HOME/.cache}/opencode2/.execpath-stamp" 2>/dev/null || true
+  return 0
+}
+
+# Installs a `bun` shim that catches opencode2's internal service spawn:
+#   bun /$bunfs/root/opencode2 serve --service
+# "/$bunfs/root/*" is the compiled binary's virtual entry path and only
+# resolves inside its own embedded filesystem, so we strip it and route the
+# CLI verb back into our glibc-aware wrapper.
+_opencode2_ensure_bun_shim() {
+  local shim_dir="${XDG_CACHE_HOME:-$HOME/.cache}/opencode2/shim"
+  mkdir -p "$shim_dir"
+  cat > "$shim_dir/bun" <<SHIM_EOF
+#!/data/data/com.termux/files/usr/bin/bash
+while [ \$# -gt 0 ]; do
+  case "\$1" in '/\$bunfs/'*) shift ;; *) break ;; esac
+done
+case "\$1" in
+  serve|run|upgrade|--version)
+    exec "$PREFIX/bin/opencode2" "\$@" ;;
+esac
+if command -v bun &>/dev/null; then
+  exec "\$(command -v bun)" "\$@"
+fi
+exit 127
+SHIM_EOF
+  chmod +x "$shim_dir/bun"
   return 0
 }
 
@@ -218,46 +275,81 @@ _opencode2_create_wrapper() {
   mkdir -p "$PREFIX/bin"
   cat > "$PREFIX/bin/opencode2" <<'WRAPPER_EOF'
 #!/data/data/com.termux/files/usr/bin/bash
+# opencode2 launcher for Termux (glibc build via termux-glibc repo).
+#
+# Why --argv0: opencode's TUI starts its background server by re-executing
+# its CLI entry, and under `ld-linux-aarch64.so.1 <binary>` that resolves to
+# loader/virtual paths a child cannot execute. This wrapper (a) keeps the
+# bundled execPath resolver pointed at process.argv[0] via a same-length
+# byte patch (re-applied after updates), and (b) sets argv[0] to THIS
+# wrapper so spawned children re-enter here, where they are routed through
+# the glibc loader correctly. A `bun` shim (see _opencode2_ensure_bun_shim)
+# additionally catches spawns shaped like:
+#   bun /$bunfs/root/opencode2 serve --service
 unset LD_PRELOAD
 unset LD_LIBRARY_PATH
 export GODEBUG=netdns=cgo
 export SSL_CERT_FILE=/data/data/com.termux/files/usr/etc/tls/cert.pem
-REAL="__REAL_BIN__"
-# Fallback search if primary REAL missing (e.g. after update)
-if [ ! -f "$REAL" ] || [ ! -s "$REAL" ] || [ "$(stat -c%s "$REAL" 2>/dev/null || stat -f%z "$REAL" 2>/dev/null || echo 0)" -lt 1000000 ]; then
-  for p in \
-    "/data/data/com.termux/files/usr/lib/node_modules/@opencode-ai/cli/bin/opencode2" \
-    "/data/data/com.termux/files/usr/lib/node_modules/@opencode-ai/cli/bin/opencode2.exe" \
-    "/data/data/com.termux/files/home/.cache/.bun/bin/opencode2"
-  do
-    if [ -f "$p" ]; then
-      sz=$(stat -c%s "$p" 2>/dev/null || stat -f%z "$p" 2>/dev/null || echo 0)
-      if [ "$sz" -gt 1000000 ]; then
-        REAL="$p"
-        break
-      fi
-    fi
-  done
+SELF="__SELF_PATH__"
+
+DBGLOG="${XDG_CACHE_HOME:-$HOME/.cache}/opencode2/wrapper.log"
+[ -n "$OPENCODE2_WRAPPER_DEBUG" ] && { mkdir -p "${DBGLOG%/*}"; echo "$(date +%T) cmd:[$0] args:[$*]" >>"$DBGLOG"; }
+export PATH="${XDG_CACHE_HOME:-$HOME/.cache}/opencode2/shim:$PATH"
+
+# When re-entered as a spawned child, older chains could leak loader flags
+# into argv ("--library-path <dir> <bin>"); strip them defensively.
+if [ "$1" = "--library-path" ]; then
+  shift 3
 fi
+
+REAL=""
+for p in \
+  "__NPM_DIR__/lib/node_modules/@opencode-ai/cli/bin/opencode2" \
+  "__NPM_DIR__/lib/node_modules/@opencode-ai/cli/bin/opencode2.exe" \
+  "/data/data/com.termux/files/home/.cache/.bun/bin/opencode2" \
+  "/data/data/com.termux/files/home/.cache/.bun/bin/opencode2.exe"
+do
+  [ "$p" = "$0" ] && continue
+  if [ -f "$p" ] && [ -x "$p" ]; then
+    sz=$(stat -c%s "$p" 2>/dev/null || stat -f%z "$p" 2>/dev/null || echo 0)
+    if [ "$sz" -gt 1000000 ]; then
+      REAL="$p"
+      break
+    fi
+  fi
+done
 if [ -z "$REAL" ]; then
-  REAL=$(find /data/data/com.termux/files/usr/lib/node_modules /data/data/com.termux/files/home/.cache -type f -name "opencode2" -size +5M 2>/dev/null | head -1)
+  REAL=$(find __NPM_DIR__/lib/node_modules /data/data/com.termux/files/home/.cache -type f -name "opencode2" -size +10M ! -path "*/bin/opencode2" 2>/dev/null | head -1)
 fi
 if [ -z "$REAL" ] || [ ! -f "$REAL" ]; then
   echo "opencode2: binary not found. Try: core reinstall ai --opencode2" >&2
   exit 127
 fi
-LOADER="/data/data/com.termux/files/usr/glibc/lib/ld-linux-aarch64.so.1"
-LIBPATH="/data/data/com.termux/files/usr/glibc/lib"
+
+# Self-heal after updates replace the binary: re-apply the execPath->argv[0]
+# byte patch (same-length, in place; never patchelf Bun binaries).
+STAMP="${XDG_CACHE_HOME:-$HOME/.cache}/opencode2/.execpath-stamp"
+mkdir -p "${STAMP%/*}"
+if [ "$REAL" -nt "$STAMP" ]; then
+  if LC_ALL=C grep -qF 'process.execPath' "$REAL" 2>/dev/null; then
+    LC_ALL=C sed -i -b 's/process\.execPath/process.argv[0] /g' "$REAL" 2>>"$DBGLOG" || true
+  fi
+  touch "$STAMP" 2>/dev/null
+fi
+
+LOADER="__GLIBC_DIR__/ld-linux-aarch64.so.1"
+LIBPATH="__GLIBC_DIR__"
 if [ -x "$LOADER" ] && [ -f "$REAL" ]; then
-  exec "$LOADER" --library-path "$LIBPATH" "$REAL" "$@"
+  # argv[0] -> this wrapper, so opencode's internal re-exec comes back here.
+  exec "$LOADER" --library-path "$LIBPATH" --argv0 "$SELF" "$REAL" "$@"
 else
   exec "$REAL" "$@"
 fi
 WRAPPER_EOF
-  # Replace placeholder with actual path (escape slashes)
-  # Use | as delimiter to avoid escaping /
-  sed -i "s|__REAL_BIN__|$real|g" "$PREFIX/bin/opencode2"
+  # Replace placeholders with actual paths (use | delimiter to avoid escaping /)
+  sed -i "s|__SELF_PATH__|$PREFIX/bin/opencode2|g; s|__NPM_DIR__|$PREFIX|g; s|__GLIBC_DIR__|$PREFIX/glibc/lib|g" "$PREFIX/bin/opencode2"
   chmod +x "$PREFIX/bin/opencode2"
+  _opencode2_ensure_bun_shim || true
   command -v opencode2 &>/dev/null
 }
 
@@ -396,6 +488,9 @@ _uninstall_opencode2_impl() {
   rm -f "$PREFIX/bin/opencode2"
   # Also clean up npm global leftover binary copies
   rm -f "$PREFIX/lib/node_modules/@opencode-ai/cli/bin/opencode2" 2>/dev/null || true
+  # Remove the bun service-spawn shim and launcher cache state
+  rm -rf "${XDG_CACHE_HOME:-$HOME/.cache}/opencode2/shim" 2>/dev/null || true
+  rm -f "${XDG_CACHE_HOME:-$HOME/.cache}/opencode2/.execpath-stamp" 2>/dev/null || true
   # Keep exe as is? npm will recreate on reinstall. Remove dangling if empty.
   return 0
 }
