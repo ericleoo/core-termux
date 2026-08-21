@@ -30,7 +30,27 @@ _opencode2_dependencies_impl() {
   done
 
   _ensure_bun || return 1
+  _opencode2_ensure_glibc || return 1
 
+  return 0
+}
+
+_opencode2_ensure_glibc() {
+  if [ -x "/data/data/com.termux/files/usr/glibc/lib/ld-linux-aarch64.so.1" ]; then
+    return 0
+  fi
+  log_info "Installing glibc for OpenCode2..."
+  if [[ ! -f $PREFIX/etc/apt/sources.list.d/glibc.list ]]; then
+    if ! yes | pkg install glibc-repo &>>"$LOG_FILE"; then
+      log_warn "Failed to install glibc-repo, continuing anyway"
+    fi
+  fi
+  if [[ ! -f $PREFIX/glibc/lib/libc.so.6 ]]; then
+    if ! yes | pkg install glibc &>>"$LOG_FILE"; then
+      log_warn "Failed to install glibc, opencode2 may fail to run"
+      return 1
+    fi
+  fi
   return 0
 }
 
@@ -39,14 +59,81 @@ _install_opencode2_bun() {
 }
 
 _install_opencode2_bun_impl() {
-  if ! _install_pkg_fallback "@opencode-ai/cli@next"; then
+  # Try standard bun/npm install first
+  if _install_pkg_fallback "@opencode-ai/cli@next"; then
+    _opencode2_ensure_path
+    # If binary is already functional, just ensure wrapper and succeed
+    if _opencode2_verify_binary; then
+      _opencode2_create_wrapper || _opencode2_link_binary || true
+      return 0
+    fi
+    # Bun reported success but binary missing/broken (common on Android os mismatch) -> fall through to Android workaround
+    log_warn "Standard install produced no functional binary, trying Android workaround..."
+  else
+    log_warn "Standard bun/npm install failed, trying Android workaround..."
+  fi
+
+  if ! _opencode2_install_android_npm; then
     log_error "Failed to install OpenCode2"
     return 1
   fi
 
   _opencode2_ensure_path
-  _opencode2_link_binary || log_warn "opencode2 binary not found in expected bun/npm locations — try restarting shell or check install log"
+  _opencode2_create_wrapper || _opencode2_link_binary || log_warn "opencode2 binary not found in expected locations — try restarting shell or check install log"
 
+  if ! _opencode2_verify_binary; then
+    log_warn "opencode2 installed but verification failed — check $LOG_FILE"
+  fi
+
+  return 0
+}
+
+_opencode2_install_android_npm() {
+  _ensure_npm || return 1
+  _opencode2_ensure_glibc || true
+
+  local arch
+  arch="$(uname -m 2>/dev/null)"
+  case "$arch" in
+    aarch64|arm64) arch="arm64" ;;
+    x86_64|amd64|x64) arch="x64" ;;
+    *) arch="arm64" ;;
+  esac
+
+  log_info "Installing @opencode-ai/cli@next for linux-$arch (Android workaround)..."
+  # Use --force to bypass os mismatch (android vs linux) and --ignore-scripts to avoid failing postinstall
+  if ! npm install -g "@opencode-ai/cli@next" --force --ignore-scripts --os=linux --cpu="$arch" --no-audit --no-fund &>>"$LOG_FILE"; then
+    log_warn "npm install with --os=linux failed, retrying without platform override..."
+    if ! npm install -g "@opencode-ai/cli@next" --force --ignore-scripts --no-audit --no-fund &>>"$LOG_FILE"; then
+      return 1
+    fi
+  fi
+
+  _opencode2_copy_platform_binary || return 1
+  return 0
+}
+
+_opencode2_copy_platform_binary() {
+  local cli_dir="$PREFIX/lib/node_modules/@opencode-ai/cli"
+  local src=""
+
+  # Platform binary is nested under cli/node_modules after global install with --ignore-scripts
+  src="$(find "$cli_dir/node_modules" "$PREFIX/lib/node_modules" 2>/dev/null -type f -name "opencode2" -size +5M -print 2>/dev/null | head -1)"
+  if [ -z "$src" ]; then
+    src="$(find "$HOME/.cache" "$HOME/.bun" 2>/dev/null -type f -name "opencode2" -size +5M -print 2>/dev/null | head -1)"
+  fi
+  if [ -z "$src" ] || [ ! -f "$src" ]; then
+    log_error "Platform binary not found after npm install (searched $cli_dir)"
+    return 1
+  fi
+
+  mkdir -p "$cli_dir/bin"
+  if ! cp -f "$src" "$cli_dir/bin/opencode2" 2>>"$LOG_FILE"; then
+    log_error "Failed to copy opencode2 binary"
+    return 1
+  fi
+  cp -f "$src" "$cli_dir/bin/opencode2.exe" 2>>"$LOG_FILE" || true
+  chmod +x "$cli_dir/bin/opencode2" "$cli_dir/bin/opencode2.exe" 2>>"$LOG_FILE" || true
   return 0
 }
 
@@ -58,17 +145,135 @@ _opencode2_ensure_path() {
   esac
 }
 
+_opencode2_verify_binary() {
+  # Check wrapper or real binary works
+  if [ -x "$PREFIX/bin/opencode2" ]; then
+    if timeout 5 "$PREFIX/bin/opencode2" --version &>/dev/null; then
+      return 0
+    fi
+  fi
+  if command -v opencode2 &>/dev/null; then
+    if timeout 5 opencode2 --version &>/dev/null; then
+      return 0
+    fi
+  fi
+  # Check real binary via glibc directly
+  local real=""
+  for p in \
+    "$PREFIX/lib/node_modules/@opencode-ai/cli/bin/opencode2" \
+    "$PREFIX/lib/node_modules/@opencode-ai/cli/bin/opencode2.exe" \
+    "$HOME/.cache/.bun/bin/opencode2"
+  do
+    if [ -f "$p" ]; then
+      local sz
+      sz=$(stat -c%s "$p" 2>/dev/null || stat -f%z "$p" 2>/dev/null || echo 0)
+      if [ "$sz" -gt 1000000 ]; then
+        real="$p"
+        break
+      fi
+    fi
+  done
+  if [ -n "$real" ] && [ -x "/data/data/com.termux/files/usr/glibc/lib/ld-linux-aarch64.so.1" ]; then
+    if timeout 5 /data/data/com.termux/files/usr/glibc/lib/ld-linux-aarch64.so.1 --library-path /data/data/com.termux/files/usr/glibc/lib "$real" --version &>/dev/null; then
+      return 0
+    fi
+  elif [ -n "$real" ]; then
+    if timeout 5 "$real" --version &>/dev/null; then
+      return 0
+    fi
+  fi
+  return 1
+}
+
+_opencode2_create_wrapper() {
+  local real=""
+  # Prefer npm global binary (most reliable on Android)
+  for p in \
+    "$PREFIX/lib/node_modules/@opencode-ai/cli/bin/opencode2" \
+    "$PREFIX/lib/node_modules/@opencode-ai/cli/bin/opencode2.exe" \
+    "$HOME/.cache/.bun/bin/opencode2" \
+    "$HOME/.cache/.bun/bin/opencode2.exe"
+  do
+    if [ -f "$p" ]; then
+      local sz
+      sz=$(stat -c%s "$p" 2>/dev/null || stat -f%z "$p" 2>/dev/null || echo 0)
+      if [ "$sz" -gt 1000000 ]; then
+        real="$p"
+        break
+      fi
+    fi
+  done
+  if [ -z "$real" ]; then
+    real="$(find "$PREFIX/lib/node_modules" "$HOME/.cache" "$HOME/.bun" 2>/dev/null -type f -name "opencode2" -size +5M -print 2>/dev/null | head -1)"
+  fi
+  if [ -z "$real" ] || [ ! -f "$real" ]; then
+    # Fallback to link-based resolution
+    return 1
+  fi
+
+  # Create glibc-aware wrapper at $PREFIX/bin/opencode2 (remove stale symlink first)
+  if [ -L "$PREFIX/bin/opencode2" ]; then
+    rm -f "$PREFIX/bin/opencode2"
+  fi
+  mkdir -p "$PREFIX/bin"
+  cat > "$PREFIX/bin/opencode2" <<'WRAPPER_EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+unset LD_PRELOAD
+unset LD_LIBRARY_PATH
+export GODEBUG=netdns=cgo
+export SSL_CERT_FILE=/data/data/com.termux/files/usr/etc/tls/cert.pem
+REAL="__REAL_BIN__"
+# Fallback search if primary REAL missing (e.g. after update)
+if [ ! -f "$REAL" ] || [ ! -s "$REAL" ] || [ "$(stat -c%s "$REAL" 2>/dev/null || stat -f%z "$REAL" 2>/dev/null || echo 0)" -lt 1000000 ]; then
+  for p in \
+    "/data/data/com.termux/files/usr/lib/node_modules/@opencode-ai/cli/bin/opencode2" \
+    "/data/data/com.termux/files/usr/lib/node_modules/@opencode-ai/cli/bin/opencode2.exe" \
+    "/data/data/com.termux/files/home/.cache/.bun/bin/opencode2"
+  do
+    if [ -f "$p" ]; then
+      sz=$(stat -c%s "$p" 2>/dev/null || stat -f%z "$p" 2>/dev/null || echo 0)
+      if [ "$sz" -gt 1000000 ]; then
+        REAL="$p"
+        break
+      fi
+    fi
+  done
+fi
+if [ -z "$REAL" ]; then
+  REAL=$(find /data/data/com.termux/files/usr/lib/node_modules /data/data/com.termux/files/home/.cache -type f -name "opencode2" -size +5M 2>/dev/null | head -1)
+fi
+if [ -z "$REAL" ] || [ ! -f "$REAL" ]; then
+  echo "opencode2: binary not found. Try: core reinstall ai --opencode2" >&2
+  exit 127
+fi
+LOADER="/data/data/com.termux/files/usr/glibc/lib/ld-linux-aarch64.so.1"
+LIBPATH="/data/data/com.termux/files/usr/glibc/lib"
+if [ -x "$LOADER" ] && [ -f "$REAL" ]; then
+  exec "$LOADER" --library-path "$LIBPATH" "$REAL" "$@"
+else
+  exec "$REAL" "$@"
+fi
+WRAPPER_EOF
+  # Replace placeholder with actual path (escape slashes)
+  # Use | as delimiter to avoid escaping /
+  sed -i "s|__REAL_BIN__|$real|g" "$PREFIX/bin/opencode2"
+  chmod +x "$PREFIX/bin/opencode2"
+  command -v opencode2 &>/dev/null
+}
+
 _opencode2_link_binary() {
-  # If $PREFIX/bin/opencode2 already valid, we're done (fast path)
+  # Fallback simple symlink for non-Android or when glibc wrapper not needed
   if [ -x "$PREFIX/bin/opencode2" ] && [ -f "$PREFIX/bin/opencode2" ]; then
-    return 0
+    # If it's already a wrapper script (contains ld-linux), keep it
+    if grep -q "ld-linux" "$PREFIX/bin/opencode2" 2>/dev/null; then
+      return 0
+    fi
   fi
 
   local bun_bin_dir=""
   if command -v bun &>/dev/null; then
     bun_bin_dir="$(bun pm bin -g 2>/dev/null || echo "")"
   fi
-  # bun pm bin -g may not exist / may error — fallback to known dirs
   local candidates=()
   [ -n "$bun_bin_dir" ] && candidates+=("$bun_bin_dir")
   candidates+=("$HOME/.cache/.bun/bin" "$HOME/.bun/bin")
@@ -79,7 +284,6 @@ _opencode2_link_binary() {
       src="$d/opencode2"
       break
     fi
-    # some packages ship .exe wrapper (observed bin/opencode2.exe)
     if [ -f "$d/opencode2.exe" ]; then
       src="$d/opencode2.exe"
       break
@@ -87,23 +291,24 @@ _opencode2_link_binary() {
   done
 
   if [ -z "$src" ]; then
-    # last resort: search common npm/bun caches
-    src="$(find "$HOME/.cache" "$HOME/.bun" "$PREFIX/lib" 2>/dev/null -type f -name "opencode2" -print -quit)"
+    src="$(find "$HOME/.cache" "$HOME/.bun" "$PREFIX/lib" 2>/dev/null -type f -name "opencode2" -size +5M -print 2>/dev/null | head -1)"
   fi
 
-  # npm global prefix bin is $PREFIX/bin — already in PATH, check there
   if [ -z "$src" ] && [ -f "$PREFIX/bin/opencode2" ]; then
     return 0
   fi
 
   if [ -z "$src" ] || [ ! -f "$src" ]; then
-    # Still check if binary became available via PATH after _ensure_path (e.g. bun bin exported)
     if command -v opencode2 &>/dev/null; then
-      # Create symlink for persistence even if now resolvable via bun bin
       local resolved
       resolved="$(command -v opencode2 2>/dev/null || echo "")"
       if [ -n "$resolved" ] && [ "$resolved" != "$PREFIX/bin/opencode2" ] && [ -f "$resolved" ]; then
         mkdir -p "$PREFIX/bin"
+        # Prefer wrapper over symlink for glibc binaries
+        if [ -x "/data/data/com.termux/files/usr/glibc/lib/ld-linux-aarch64.so.1" ]; then
+          _opencode2_create_wrapper
+          return $?
+        fi
         ln -sf "$resolved" "$PREFIX/bin/opencode2"
         chmod +x "$PREFIX/bin/opencode2" 2>/dev/null || true
       fi
@@ -112,12 +317,14 @@ _opencode2_link_binary() {
     return 1
   fi
 
-  # Ensure $PREFIX/bin linker — makes binary available even if bun bin not in PATH
   mkdir -p "$PREFIX/bin"
-  ln -sf "$src" "$PREFIX/bin/opencode2"
-  chmod +x "$PREFIX/bin/opencode2" 2>/dev/null || true
-
-  # Verify
+  if [ -x "/data/data/com.termux/files/usr/glibc/lib/ld-linux-aarch64.so.1" ]; then
+    # Use wrapper for glibc binary
+    _opencode2_create_wrapper
+  else
+    ln -sf "$src" "$PREFIX/bin/opencode2"
+    chmod +x "$PREFIX/bin/opencode2" 2>/dev/null || true
+  fi
   command -v opencode2 &>/dev/null
 }
 
@@ -137,9 +344,14 @@ _get_remote_opencode2_version() {
 }
 
 install_opencode2() {
-  if command -v opencode2 &>/dev/null; then
+  if command -v opencode2 &>/dev/null && _opencode2_verify_binary; then
     log_info "OpenCode2 is already installed"
     return 2
+  fi
+  # If binary exists but wrapper broken, allow reinstall
+  if command -v opencode2 &>/dev/null && ! _opencode2_verify_binary; then
+    log_warn "Existing opencode2 binary not functional, reinstalling..."
+    rm -f "$PREFIX/bin/opencode2"
   fi
 
   log_info "Installing OpenCode2..."
@@ -149,13 +361,17 @@ install_opencode2() {
   _opencode2_dependencies || return 1
   _install_opencode2_bun || return 1
 
+  if ! _opencode2_verify_binary; then
+    log_warn "opencode2 installed but not yet on PATH — try: export PATH=\"/data/data/com.termux/files/home/.cache/.bun/bin:\$PATH\" && opencode2 --version"
+  fi
+
   log_success "OpenCode2 installed successfully"
   return 0
 }
 
 uninstall_opencode2() {
   _walkie_remove_wrapper opencode2
-  if ! command -v opencode2 &>/dev/null; then
+  if ! command -v opencode2 &>/dev/null && [ ! -f "$PREFIX/bin/opencode2" ]; then
     log_info "OpenCode2 is not installed"
     return 2
   fi
@@ -176,28 +392,11 @@ uninstall_opencode2() {
 
 _uninstall_opencode2_impl() {
   _uninstall_pkg_fallback "@opencode-ai/cli"
-  # Clean up symlink we may have created in $PREFIX/bin
-  if [ -L "$PREFIX/bin/opencode2" ]; then
-    local target
-    target="$(readlink -f "$PREFIX/bin/opencode2" 2>/dev/null || readlink "$PREFIX/bin/opencode2" 2>/dev/null || echo "")"
-    case "$target" in
-    *".cache/.bun/bin/"*|*".bun/bin/"*|*".cache/bun/bin/"*|*"/@opencode-ai/"*)
-      rm -f "$PREFIX/bin/opencode2"
-      ;;
-    *)
-      # If binary no longer exists via package manager, remove dangling link
-      if [ ! -e "$PREFIX/bin/opencode2" ]; then
-        rm -f "$PREFIX/bin/opencode2"
-      fi
-      # Also handle non-symlink shim we created (should be symlink, but be safe)
-      if [ -f "$PREFIX/bin/opencode2" ] && ! command -v npm &>/dev/null; then
-        :
-      fi
-      ;;
-    esac
-  elif [ -f "$PREFIX/bin/opencode2" ] && [ ! -e "$PREFIX/bin/opencode2" ]; then
-    rm -f "$PREFIX/bin/opencode2"
-  fi
+  # Remove wrapper/symlink we created in $PREFIX/bin
+  rm -f "$PREFIX/bin/opencode2"
+  # Also clean up npm global leftover binary copies
+  rm -f "$PREFIX/lib/node_modules/@opencode-ai/cli/bin/opencode2" 2>/dev/null || true
+  # Keep exe as is? npm will recreate on reinstall. Remove dangling if empty.
   return 0
 }
 
@@ -210,12 +409,19 @@ _update_opencode2() {
 }
 
 _update_opencode2_impl() {
+  # Force reinstall via Android workaround if needed
   if ! _install_pkg_fallback "@opencode-ai/cli@next"; then
-    log_error "Failed to update OpenCode2"
-    return 1
+    if ! _opencode2_install_android_npm; then
+      log_error "Failed to update OpenCode2"
+      return 1
+    fi
+  fi
+  # Ensure platform binary copied and wrapper refreshed
+  if ! _opencode2_verify_binary; then
+    _opencode2_copy_platform_binary 2>/dev/null || true
   fi
   _opencode2_ensure_path
-  _opencode2_link_binary || true
+  _opencode2_create_wrapper || _opencode2_link_binary || true
   return 0
 }
 
