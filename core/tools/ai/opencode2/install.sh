@@ -44,7 +44,81 @@ _install_opencode2_bun_impl() {
     return 1
   fi
 
+  _opencode2_ensure_path
+  _opencode2_link_binary || log_warn "opencode2 binary not found in expected bun/npm locations — try restarting shell or check install log"
+
   return 0
+}
+
+_opencode2_ensure_path() {
+  local bun_bin_dir="/data/data/com.termux/files/home/.cache/.bun/bin"
+  case ":$PATH:" in
+  *":$bun_bin_dir:"*) ;;
+  *) export PATH="$bun_bin_dir:$PATH" ;;
+  esac
+}
+
+_opencode2_link_binary() {
+  # If $PREFIX/bin/opencode2 already valid, we're done (fast path)
+  if [ -x "$PREFIX/bin/opencode2" ] && [ -f "$PREFIX/bin/opencode2" ]; then
+    return 0
+  fi
+
+  local bun_bin_dir=""
+  if command -v bun &>/dev/null; then
+    bun_bin_dir="$(bun pm bin -g 2>/dev/null || echo "")"
+  fi
+  # bun pm bin -g may not exist / may error — fallback to known dirs
+  local candidates=()
+  [ -n "$bun_bin_dir" ] && candidates+=("$bun_bin_dir")
+  candidates+=("$HOME/.cache/.bun/bin" "$HOME/.bun/bin")
+
+  local d src=""
+  for d in "${candidates[@]}"; do
+    if [ -f "$d/opencode2" ]; then
+      src="$d/opencode2"
+      break
+    fi
+    # some packages ship .exe wrapper (observed bin/opencode2.exe)
+    if [ -f "$d/opencode2.exe" ]; then
+      src="$d/opencode2.exe"
+      break
+    fi
+  done
+
+  if [ -z "$src" ]; then
+    # last resort: search common npm/bun caches
+    src="$(find "$HOME/.cache" "$HOME/.bun" "$PREFIX/lib" 2>/dev/null -type f -name "opencode2" -print -quit)"
+  fi
+
+  # npm global prefix bin is $PREFIX/bin — already in PATH, check there
+  if [ -z "$src" ] && [ -f "$PREFIX/bin/opencode2" ]; then
+    return 0
+  fi
+
+  if [ -z "$src" ] || [ ! -f "$src" ]; then
+    # Still check if binary became available via PATH after _ensure_path (e.g. bun bin exported)
+    if command -v opencode2 &>/dev/null; then
+      # Create symlink for persistence even if now resolvable via bun bin
+      local resolved
+      resolved="$(command -v opencode2 2>/dev/null || echo "")"
+      if [ -n "$resolved" ] && [ "$resolved" != "$PREFIX/bin/opencode2" ] && [ -f "$resolved" ]; then
+        mkdir -p "$PREFIX/bin"
+        ln -sf "$resolved" "$PREFIX/bin/opencode2"
+        chmod +x "$PREFIX/bin/opencode2" 2>/dev/null || true
+      fi
+      return 0
+    fi
+    return 1
+  fi
+
+  # Ensure $PREFIX/bin linker — makes binary available even if bun bin not in PATH
+  mkdir -p "$PREFIX/bin"
+  ln -sf "$src" "$PREFIX/bin/opencode2"
+  chmod +x "$PREFIX/bin/opencode2" 2>/dev/null || true
+
+  # Verify
+  command -v opencode2 &>/dev/null
 }
 
 # Remote version for @next tag — npm registry dist-tag endpoint
@@ -102,6 +176,28 @@ uninstall_opencode2() {
 
 _uninstall_opencode2_impl() {
   _uninstall_pkg_fallback "@opencode-ai/cli"
+  # Clean up symlink we may have created in $PREFIX/bin
+  if [ -L "$PREFIX/bin/opencode2" ]; then
+    local target
+    target="$(readlink -f "$PREFIX/bin/opencode2" 2>/dev/null || readlink "$PREFIX/bin/opencode2" 2>/dev/null || echo "")"
+    case "$target" in
+    *".cache/.bun/bin/"*|*".bun/bin/"*|*".cache/bun/bin/"*|*"/@opencode-ai/"*)
+      rm -f "$PREFIX/bin/opencode2"
+      ;;
+    *)
+      # If binary no longer exists via package manager, remove dangling link
+      if [ ! -e "$PREFIX/bin/opencode2" ]; then
+        rm -f "$PREFIX/bin/opencode2"
+      fi
+      # Also handle non-symlink shim we created (should be symlink, but be safe)
+      if [ -f "$PREFIX/bin/opencode2" ] && ! command -v npm &>/dev/null; then
+        :
+      fi
+      ;;
+    esac
+  elif [ -f "$PREFIX/bin/opencode2" ] && [ ! -e "$PREFIX/bin/opencode2" ]; then
+    rm -f "$PREFIX/bin/opencode2"
+  fi
   return 0
 }
 
@@ -118,6 +214,8 @@ _update_opencode2_impl() {
     log_error "Failed to update OpenCode2"
     return 1
   fi
+  _opencode2_ensure_path
+  _opencode2_link_binary || true
   return 0
 }
 

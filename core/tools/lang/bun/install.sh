@@ -361,18 +361,24 @@ _bun_setup_path_native() {
   local rc_file=""
   local path_line='export PATH="/data/data/com.termux/files/home/.cache/.bun/bin:$PATH"'
 
-  # Priority: .zshrc > .bashrc
-  # If .zshrc exists, use it (zsh user — priority shell).
-  # Otherwise fall back to .bashrc.
+  # Ensure current session can find bun global bins immediately
+  case ":$PATH:" in
+  *":/data/data/com.termux/files/home/.cache/.bun/bin:"*) ;;
+  *) export PATH="/data/data/com.termux/files/home/.cache/.bun/bin:$PATH" ;;
+  esac
+
+  # Priority: .zshrc > .bashrc > .bash_profile > .profile (create .bashrc if none)
   if [ -f "$HOME/.zshrc" ]; then
     rc_file="$HOME/.zshrc"
   elif [ -f "$HOME/.bashrc" ]; then
     rc_file="$HOME/.bashrc"
-  fi
-
-  if [ -z "$rc_file" ]; then
-    log_info "No .zshrc or .bashrc found, skipping PATH setup"
-    return 0
+  elif [ -f "$HOME/.bash_profile" ]; then
+    rc_file="$HOME/.bash_profile"
+  elif [ -f "$HOME/.profile" ]; then
+    rc_file="$HOME/.profile"
+  else
+    rc_file="$HOME/.bashrc"
+    touch "$rc_file"
   fi
 
   # Idempotent: only add if the exact line is not already present
