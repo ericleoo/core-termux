@@ -163,6 +163,10 @@ _install_specific_tools() {
         install_opencode
         case $? in 0) ((installed_count++));; 1) ((failed_count++));; esac
         ;;
+      opencode2)
+        install_opencode2
+        case $? in 0) ((installed_count++));; 1) ((failed_count++));; esac
+        ;;
       qoder)
         install_qoder
         case $? in 0) ((installed_count++));; 1) ((failed_count++));; esac

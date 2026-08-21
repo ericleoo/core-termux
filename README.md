@@ -123,6 +123,7 @@ core install ai --opencode --ollama  # Install only OpenCode and Ollama
 | **Ollama** | `--ollama` | Run open-source LLMs locally on Termux |
 | **Codex CLI** | `--codex` | Coding agent from OpenAI that runs locally on your computer |
 | **OpenCode** | `--opencode` | Open-source agent that helps you write code in your terminal |
+| **OpenCode2** | `--opencode2` | Preview channel of OpenCode (`@opencode-ai/cli@next`, binary `opencode2`) |
 | **Qoder** | `--qoder` | A terminal-native AI coding partner—and an agent engine you can build on |
 | **KiloCode CLI** | `--kilocode-cli` | The open source coding agent for building with AI in VS Code, JetBrains, or the CLI |
 | **Cactus Needle** | `--cactus-needle` | 26M function-call model for tool-call generation — inference and finetuning from the terminal |

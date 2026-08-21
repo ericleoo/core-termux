@@ -128,6 +128,7 @@ _list_ai() {
   table_row "Ollama" "--ollama" "ollama" "$(_check_pkg "ollama")"
   table_row "Codex CLI" "--codex" "codex" "$(_check_cmd "codex")"
   table_row "OpenCode" "--opencode" "opencode" "$(_check_cmd "opencode")"
+  table_row "OpenCode2" "--opencode2" "opencode2" "$(_check_cmd "opencode2")"
   table_row "Qoder CLI" "--qoder" "qodercli" "$(_check_cmd "qodercli")"
   table_row "KiloCode CLI" "--kilocode-cli" "kilo" "$(_check_cmd "kilo")"
   table_row "Cactus Needle" "--cactus-needle" "needle" "$(_check_cmd "needle")"

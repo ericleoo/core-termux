@@ -340,6 +340,7 @@ _walkie_generate_wrappers_impl() {
   agent_bins[openclaw]="openclaw"
   agent_bins[openclaude]="openclaude"
   agent_bins[opencode]="opencode"
+  agent_bins[opencode2]="opencode2"
   agent_bins[pi]="pi"
   agent_bins[qoder]="qodercli"
   agent_bins[qwen-code]="qwen qwen-code"
@@ -350,7 +351,7 @@ _walkie_generate_wrappers_impl() {
 
   # Agent packages to scan. Non-agent complements (ctx7, engram, gentle-ai,
   # gga, cactus*, codegraph, hugging-face, openspec, ollama) are excluded.
-  local agent_list="antigravity-cli ampcode claude-code cline codebuff codex command-code copilot-cli cursor-cli droid-factory freebuff gemini-cli goose hermes-agent keelcode kilocode-cli kimchi kimi-code mimocode minimax-cli mistral-vibe oh-my-pi openclaw openclaude opencode pi qoder qwen-code supercode"
+  local agent_list="antigravity-cli ampcode claude-code cline codebuff codex command-code copilot-cli cursor-cli droid-factory freebuff gemini-cli goose hermes-agent keelcode kilocode-cli kimchi kimi-code mimocode minimax-cli mistral-vibe oh-my-pi openclaw openclaude opencode opencode2 pi qoder qwen-code supercode"
 
   mkdir -p "$wrap_dir"
 

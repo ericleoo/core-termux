@@ -14,6 +14,7 @@ AI_TOOLS=(
   "ollama"
   "codex"
   "opencode"
+  "opencode2"
   "qoder"
   "kilocode-cli"
   "cactus-needle"
@@ -54,6 +55,7 @@ source "$(dirname "$BASH_SOURCE")/openclaw/install.sh"
 source "$(dirname "$BASH_SOURCE")/ollama/install.sh"
 source "$(dirname "$BASH_SOURCE")/codex/install.sh"
 source "$(dirname "$BASH_SOURCE")/opencode/install.sh"
+source "$(dirname "$BASH_SOURCE")/opencode2/install.sh"
 source "$(dirname "$BASH_SOURCE")/qoder/install.sh"
 source "$(dirname "$BASH_SOURCE")/kilocode-cli/install.sh"
 source "$(dirname "$BASH_SOURCE")/cactus-needle/install.sh"
@@ -124,6 +126,10 @@ install_all_ai_tools() {
       ;;
     opencode)
       loading "Installing OpenCode" install_opencode
+      case $? in 0) ((installed_count++));; 1) ((failed_count++));; esac
+      ;;
+    opencode2)
+      loading "Installing OpenCode2" install_opencode2
       case $? in 0) ((installed_count++));; 1) ((failed_count++));; esac
       ;;
     qoder)
@@ -290,6 +296,10 @@ uninstall_all_ai_tools() {
       uninstall_opencode
       case $? in 0) ((uninstalled_count++));; 1) ((failed_count++));; esac
       ;;
+    opencode2)
+      uninstall_opencode2
+      case $? in 0) ((uninstalled_count++));; 1) ((failed_count++));; esac
+      ;;
     qoder)
       uninstall_qoder
       case $? in 0) ((uninstalled_count++));; 1) ((failed_count++));; esac
@@ -442,6 +452,9 @@ update_all_ai_tools() {
     opencode)
       update_opencode
       ;;
+    opencode2)
+      update_opencode2
+      ;;
     qoder)
       update_qoder
       ;;
@@ -574,6 +587,10 @@ reinstall_all_ai_tools() {
       ;;
     opencode)
       reinstall_opencode
+      case $? in 0) ((reinstalled_count++));; 1) ((failed_count++));; esac
+      ;;
+    opencode2)
+      reinstall_opencode2
       case $? in 0) ((reinstalled_count++));; 1) ((failed_count++));; esac
       ;;
     qoder)

@@ -164,6 +164,10 @@ _update_specific_tools() {
         update_opencode
         case $? in 0) ((updated_count++));; 1) ((failed_count++));; esac
         ;;
+      opencode2)
+        update_opencode2
+        case $? in 0) ((updated_count++));; 1) ((failed_count++));; esac
+        ;;
       qoder)
         update_qoder
         case $? in 0) ((updated_count++));; 1) ((failed_count++));; esac

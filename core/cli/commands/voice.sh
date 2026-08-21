@@ -14,6 +14,7 @@ voice_help() {
 	separator_section "Agents"
 	echo
 	printf "    ${D_CYAN}%-16s${D_NC} %s\n" "opencode" "opencode run \"prompt\""
+	printf "    ${D_CYAN}%-16s${D_NC} %s\n" "opencode2" "opencode2 run \"prompt\""
 	printf "    ${D_CYAN}%-16s${D_NC} %s\n" "claude-code" "claude -p \"prompt\""
 	printf "    ${D_CYAN}%-16s${D_NC} %s\n" "codex" "codex \"prompt\""
 	printf "    ${D_CYAN}%-16s${D_NC} %s\n" "gemini-cli" "gemini -p \"prompt\""
@@ -129,6 +130,9 @@ voice_main() {
 	opencode)
 		opencode run "$prompt"
 		;;
+	opencode2)
+		opencode2 run "$prompt"
+		;;
 	claude-code)
 		claude -p "$prompt"
 		;;
@@ -169,7 +173,7 @@ voice_main() {
 		log_error "Unknown agent: $agent"
 		echo
 		log_info "Supported agents:"
-		echo "  opencode, qoder, claude-code, codex, gemini-cli, hermes-agent,"
+		echo "  opencode, opencode2, qoder, claude-code, codex, gemini-cli, hermes-agent,"
 		echo "  kilocode-cli, kimi-code, mimocode, mistral-vibe, openclaude, pi, qwen-code"
 		separator
 		exit 1

@@ -46,7 +46,7 @@ const RUN_GENERIC = `function runGeneric(cli, prompt, sessionId, model, extraArg
     core: ['agent', 'run', '-p', '{prompt}', '-y'],
     agy: ['-p', '{prompt}'],
     vibe: ['-p', '{prompt}', '--output', 'text'],
-    opencode: ['run', '{prompt}'],
+    opencode: ['run', '{prompt}'], opencode2: ['run', '{prompt}'],
     gemini: ['-p', '{prompt}'], qwen: ['-p', '{prompt}'], 'qwen-code': ['-p', '{prompt}'],
     mimo: ['run', '{prompt}'], mimocode: ['run', '{prompt}'],
     kilo: ['run', '{prompt}'], kilocode: ['run', '{prompt}'],

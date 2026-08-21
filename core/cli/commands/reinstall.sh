@@ -156,6 +156,10 @@ _reinstall_specific_tools() {
         reinstall_opencode
         case $? in 0) ((reinstalled_count++));; 1) ((failed_count++));; esac
         ;;
+      opencode2)
+        reinstall_opencode2
+        case $? in 0) ((reinstalled_count++));; 1) ((failed_count++));; esac
+        ;;
       qoder)
         reinstall_qoder
         case $? in 0) ((reinstalled_count++));; 1) ((failed_count++));; esac
