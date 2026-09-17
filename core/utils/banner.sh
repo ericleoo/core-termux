@@ -58,6 +58,7 @@ CORE_TIPS=(
 	"Install Rust: ${D_CYAN}core install lang --rust${NC}"
 	"Install Go: ${D_CYAN}core install lang --golang${NC}"
 	"Install Bun: ${D_CYAN}core install lang --bun${NC}"
+	"Install uv (Python toolchain): ${D_CYAN}core install lang --uv${NC}"
 	"Install PHP: ${D_CYAN}core install lang --php${NC}"
 	"Install Perl: ${D_CYAN}core install lang --perl${NC}"
 	"Install C/C++: ${D_CYAN}core install lang --clang${NC}"

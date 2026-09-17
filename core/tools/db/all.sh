@@ -10,6 +10,7 @@ DB_TOOLS=(
 	"sqlite"
 	"mongodb"
 	"redis"
+	"turso"
 )
 
 source "$(dirname "$BASH_SOURCE")/postgresql/install.sh"
@@ -17,6 +18,7 @@ source "$(dirname "$BASH_SOURCE")/mariadb/install.sh"
 source "$(dirname "$BASH_SOURCE")/sqlite/install.sh"
 source "$(dirname "$BASH_SOURCE")/mongodb/install.sh"
 source "$(dirname "$BASH_SOURCE")/redis/install.sh"
+source "$(dirname "$BASH_SOURCE")/turso/install.sh"
 
 install_all_db_tools() {
 	local installed_count=0
@@ -42,6 +44,10 @@ install_all_db_tools() {
 			;;
 		redis)
 			loading "Installing Redis" install_redis
+			case $? in 0) ((installed_count++));; 1) ((failed_count++));; esac
+			;;
+		turso)
+			loading "Installing Turso" install_turso
 			case $? in 0) ((installed_count++));; 1) ((failed_count++));; esac
 			;;
 		esac
@@ -76,6 +82,10 @@ uninstall_all_db_tools() {
 			loading "Uninstalling Redis" uninstall_redis
 			case $? in 0) ((uninstalled_count++));; 1) ((failed_count++));; esac
 			;;
+		turso)
+			loading "Uninstalling Turso" uninstall_turso
+			case $? in 0) ((uninstalled_count++));; 1) ((failed_count++));; esac
+			;;
 		esac
 	done
 
@@ -99,6 +109,9 @@ update_all_db_tools() {
       ;;
     redis)
       update_redis
+      ;;
+    turso)
+      update_turso
       ;;
     esac
   done
@@ -129,6 +142,10 @@ reinstall_all_db_tools() {
       ;;
     redis)
       loading "Reinstalling Redis" reinstall_redis
+      case $? in 0) ((reinstalled_count++));; 1) ((failed_count++));; esac
+      ;;
+    turso)
+      loading "Reinstalling Turso" reinstall_turso
       case $? in 0) ((reinstalled_count++));; 1) ((failed_count++));; esac
       ;;
     esac

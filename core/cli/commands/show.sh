@@ -16,7 +16,7 @@ show_main() {
 		echo
 		list_item "core show ai --opencode"
 		list_item "core show ai --ollama"
-		list_item "core show db --postgresql"
+		list_item "core show db --postgresql --turso"
 		list_item "core show dev --gh"
 		list_item "core show npm --typescript"
 		list_item "core show all --<tool>"

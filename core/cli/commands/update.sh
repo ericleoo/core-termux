@@ -326,6 +326,10 @@ _update_specific_tools() {
         update_redis
         case $? in 0) ((updated_count++));; 1) ((failed_count++));; esac
         ;;
+      turso)
+        update_turso
+        case $? in 0) ((updated_count++));; 1) ((failed_count++));; esac
+        ;;
       *)
         log_warn "Unknown database: --$tool"
         ;;
@@ -554,6 +558,10 @@ _update_specific_tools() {
         ;;
       bun)
         update_bun
+        case $? in 0) ((updated_count++));; 1) ((failed_count++));; esac
+        ;;
+      uv)
+        update_uv
         case $? in 0) ((updated_count++));; 1) ((failed_count++));; esac
         ;;
       *)

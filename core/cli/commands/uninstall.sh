@@ -324,6 +324,10 @@ _uninstall_specific_tools() {
         uninstall_redis
         case $? in 0) ((uninstalled_count++));; 1) ((failed_count++));; esac
         ;;
+      turso)
+        uninstall_turso
+        case $? in 0) ((uninstalled_count++));; 1) ((failed_count++));; esac
+        ;;
       *)
         log_warn "Unknown database: --$tool"
         ;;
@@ -552,6 +556,10 @@ _uninstall_specific_tools() {
         ;;
       bun)
         uninstall_bun
+        case $? in 0) ((uninstalled_count++));; 1) ((failed_count++));; esac
+        ;;
+      uv)
+        uninstall_uv
         case $? in 0) ((uninstalled_count++));; 1) ((failed_count++));; esac
         ;;
       *)

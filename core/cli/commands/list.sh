@@ -80,6 +80,7 @@ _list_lang() {
   table_row "C/C++ (clang)" "--clang" "$(_check_pkg "clang")"
   table_row "Go (golang)" "--golang" "$(_check_pkg "golang")"
   table_row "Bun (JS runtime)" "--bun" "$(_check_cmd "bun")"
+  table_row "uv (Python toolchain)" "--uv" "$(_check_cmd "uv")"
   table_end
 
   echo
@@ -102,6 +103,7 @@ _list_db() {
   table_row "SQLite" "--sqlite" "$(_check_pkg "sqlite")"
   table_row "MongoDB" "--mongodb" "$(_check_pkg "mongodb")"
   table_row "Redis" "--redis" "$(_check_pkg "redis")"
+  table_row "Turso" "--turso" "$(_check_cmd "turso")"
   table_end
 
   echo

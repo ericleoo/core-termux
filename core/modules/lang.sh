@@ -27,6 +27,7 @@ install_lang() {
   list_item "C/C++ (clang)"
   list_item "Go (golang)"
   list_item "Bun.js (JS Runtime)"
+  list_item "uv (Python toolchain)"
   echo
 }
 
@@ -93,6 +94,7 @@ reinstall_lang() {
   list_item "C/C++ (clang)"
   list_item "Go (golang)"
   list_item "Bun.js (JS Runtime)"
+  list_item "uv (Python toolchain)"
   echo
 }
 

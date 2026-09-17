@@ -24,6 +24,7 @@ install_db() {
 	list_item "SQLite"
 	list_item "MongoDB"
 	list_item "Redis"
+	list_item "Turso"
 	echo
 }
 
@@ -87,6 +88,7 @@ reinstall_db() {
   list_item "SQLite"
   list_item "MongoDB"
   list_item "Redis"
+  list_item "Turso"
   echo
 }
 

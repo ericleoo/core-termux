@@ -64,8 +64,9 @@ _install_opencode2_bun_impl() {
     _opencode2_ensure_path
     # If binary is already functional, just ensure wrapper and succeed
     if _opencode2_verify_binary; then
-      _opencode2_create_wrapper || _opencode2_link_binary || true
-      return 0
+      if _opencode2_create_wrapper || _opencode2_link_binary; then
+        _opencode2_verify_binary && return 0
+      fi
     fi
     # Bun reported success but binary missing/broken (common on Android os mismatch) -> fall through to Android workaround
     log_warn "Standard install produced no functional binary, trying Android workaround..."
@@ -79,10 +80,14 @@ _install_opencode2_bun_impl() {
   fi
 
   _opencode2_ensure_path
-  _opencode2_create_wrapper || _opencode2_link_binary || log_warn "opencode2 binary not found in expected locations — try restarting shell or check install log"
+  if ! _opencode2_create_wrapper && ! _opencode2_link_binary; then
+    log_error "Failed to create opencode2 launcher — check $LOG_FILE"
+    return 1
+  fi
 
   if ! _opencode2_verify_binary; then
-    log_warn "opencode2 installed but verification failed — check $LOG_FILE"
+    log_error "opencode2 verification failed — check $LOG_FILE"
+    return 1
   fi
 
   return 0
@@ -90,19 +95,19 @@ _install_opencode2_bun_impl() {
 
 _opencode2_install_android_npm() {
   _ensure_npm || return 1
-  _opencode2_ensure_glibc || true
+  _opencode2_ensure_glibc || return 1
 
   local arch
   arch="$(uname -m 2>/dev/null)"
   case "$arch" in
     aarch64|arm64) arch="arm64" ;;
     x86_64|amd64|x64) arch="x64" ;;
-    *) arch="arm64" ;;
+    *) log_error "Unsupported architecture: $arch"; return 1 ;;
   esac
 
   log_info "Installing @opencode-ai/cli@next for linux-$arch (Android workaround)..."
   # Use --force to bypass os mismatch (android vs linux) and --ignore-scripts to avoid failing postinstall
-  if ! npm install -g "@opencode-ai/cli@next" --force --ignore-scripts --os=linux --cpu="$arch" --no-audit --no-fund &>>"$LOG_FILE"; then
+  if ! npm install -g "@opencode-ai/cli@next" --force --ignore-scripts --os=linux --cpu="$arch" --libc=glibc --include=optional --no-audit --no-fund &>>"$LOG_FILE"; then
     log_warn "npm install with --os=linux failed, retrying without platform override..."
     if ! npm install -g "@opencode-ai/cli@next" --force --ignore-scripts --no-audit --no-fund &>>"$LOG_FILE"; then
       return 1
@@ -115,15 +120,17 @@ _opencode2_install_android_npm() {
 
 _opencode2_copy_platform_binary() {
   local cli_dir="$PREFIX/lib/node_modules/@opencode-ai/cli"
-  local src=""
+  local arch src
+  arch="$(uname -m 2>/dev/null)"
+  case "$arch" in
+    aarch64|arm64) arch="arm64" ;;
+    x86_64|amd64|x64) arch="x64" ;;
+    *) log_error "Unsupported architecture: $arch"; return 1 ;;
+  esac
 
-  # Platform binary is nested under cli/node_modules after global install with --ignore-scripts
-  src="$(find "$cli_dir/node_modules" "$PREFIX/lib/node_modules" 2>/dev/null -type f -name "opencode2" -size +5M -print 2>/dev/null | head -1)"
-  if [ -z "$src" ]; then
-    src="$(find "$HOME/.cache" "$HOME/.bun" 2>/dev/null -type f -name "opencode2" -size +5M -print 2>/dev/null | head -1)"
-  fi
-  if [ -z "$src" ] || [ ! -f "$src" ]; then
-    log_error "Platform binary not found after npm install (searched $cli_dir)"
+  src="$cli_dir/node_modules/@opencode-ai/cli-linux-$arch/bin/opencode2"
+  if [ ! -f "$src" ]; then
+    log_error "glibc platform binary not found after npm install: $src"
     return 1
   fi
 
@@ -132,8 +139,8 @@ _opencode2_copy_platform_binary() {
     log_error "Failed to copy opencode2 binary"
     return 1
   fi
-  cp -f "$src" "$cli_dir/bin/opencode2.exe" 2>>"$LOG_FILE" || true
-  chmod +x "$cli_dir/bin/opencode2" "$cli_dir/bin/opencode2.exe" 2>>"$LOG_FILE" || true
+  cp -f "$src" "$cli_dir/bin/opencode2.exe" 2>>"$LOG_FILE" || return 1
+  chmod +x "$cli_dir/bin/opencode2" "$cli_dir/bin/opencode2.exe" 2>>"$LOG_FILE" || return 1
 
   _opencode2_patch_execpath || true
   return 0
@@ -156,7 +163,7 @@ _opencode2_patch_execpath() {
     [ -f "$f" ] || continue
     if LC_ALL=C grep -qF 'process.execPath' "$f" 2>/dev/null; then
       if LC_ALL=C sed -i -b 's/process\.execPath/process.argv[0] /g' "$f" 2>>"$LOG_FILE"; then
-        log_ok "Patched execPath resolver in ${f##*/bin/} ($f)"
+        log_success "Patched execPath resolver in ${f##*/bin/} ($f)"
       else
         log_warn "Failed to patch $f (wrapper self-heal will retry at launch)"
       fi
@@ -205,9 +212,8 @@ _opencode2_ensure_path() {
 _opencode2_verify_binary() {
   # Check wrapper or real binary works
   if [ -x "$PREFIX/bin/opencode2" ]; then
-    if timeout 5 "$PREFIX/bin/opencode2" --version &>/dev/null; then
-      return 0
-    fi
+    timeout 15 "$PREFIX/bin/opencode2" --version &>>"$LOG_FILE"
+    return $?
   fi
   if command -v opencode2 &>/dev/null; then
     if timeout 5 opencode2 --version &>/dev/null; then
@@ -454,7 +460,8 @@ install_opencode2() {
   _install_opencode2_bun || return 1
 
   if ! _opencode2_verify_binary; then
-    log_warn "opencode2 installed but not yet on PATH — try: export PATH=\"/data/data/com.termux/files/home/.cache/.bun/bin:\$PATH\" && opencode2 --version"
+    log_error "opencode2 verification failed — check $LOG_FILE"
+    return 1
   fi
 
   log_success "OpenCode2 installed successfully"
@@ -511,12 +518,13 @@ _update_opencode2_impl() {
       return 1
     fi
   fi
-  # Ensure platform binary copied and wrapper refreshed
-  if ! _opencode2_verify_binary; then
-    _opencode2_copy_platform_binary 2>/dev/null || true
-  fi
+  _opencode2_copy_platform_binary || return 1
   _opencode2_ensure_path
-  _opencode2_create_wrapper || _opencode2_link_binary || true
+  _opencode2_create_wrapper || _opencode2_link_binary || return 1
+  if ! _opencode2_verify_binary; then
+    log_error "opencode2 verification failed — check $LOG_FILE"
+    return 1
+  fi
   return 0
 }
 

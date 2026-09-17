@@ -91,8 +91,8 @@ These modules are available across most commands (`core list`, `core install`, `
 
 | Module | Description |
 |--------|-------------|
-| `lang` | Language packages (Node.js, Python, Perl, PHP, Rust, C/C++, Go, Bun.js) |
-| `db` | Databases (PostgreSQL, MariaDB, SQLite, MongoDB, Redis) |
+| `lang` | Language packages (Node.js, Python, Perl, PHP, Rust, C/C++, Go, Bun.js, uv) |
+| `db` | Databases (PostgreSQL, MariaDB, SQLite, MongoDB, Redis, Turso) |
 | `ai` | AI agents and coding assistants — see [AI Agents](#ai-agents) |
 | `editor` | Code editor components (Neovim, NvChad) |
 | `dev` | Development tools (gh, wget, curl, fzf, lsd, bat, etc.) |
@@ -816,6 +816,9 @@ core install lang
 | **C/C++** | `clang` | LLVM C/C++ compiler |
 | **Go** | `golang` | Go programming language |
 | **Bun** | `bun` | Bun JavaScript runtime |
+| **uv** | `uv` | Python package installer and toolchain (Astral) |
+
+> **Termux note:** `uv` is installed as a native Termux package and is configured for Termux — it uses Termux's system Python and never downloads managed CPython (which targets glibc/musl and does not run on bionic). See `core show lang --uv`.
 
 ---
 
@@ -1216,6 +1219,7 @@ core install npm
 core list ai                                    # See available AI tools
 core install ai --qwen-code --ollama            # Install only Qwen Code and Ollama
 core install dev --gh --fzf --jq                # Install only gh, fzf, and jq
+core install lang --python --uv                  # Install only Python and uv
 core install npm --typescript --prettier        # Install only TypeScript and Prettier
 ```
 

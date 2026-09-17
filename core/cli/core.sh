@@ -61,7 +61,7 @@ core_help() {
   echo
   log_info "Install, update, reinstall, uninstall, list, show or open:"
   echo
-  printf "    ${D_GREEN}%-10s${D_NC} %s\n" "lang" "Node, Bun, Python, Rust, C/C++, Go, etc."
+  printf "    ${D_GREEN}%-10s${D_NC} %s\n" "lang" "Node, Bun, Python, uv, Rust, C/C++, Go, etc."
   printf "    ${D_GREEN}%-10s${D_NC} %s\n" "db" "PostgreSQL, MongoDB, SQLite, Redis, etc."
   printf "    ${D_GREEN}%-10s${D_NC} %s\n" "ai" "OpenCode, Gentle AI, Claude Code, etc."
   printf "    ${D_GREEN}%-10s${D_NC} %s\n" "editor" "Neovim + NvChad + Plugins"

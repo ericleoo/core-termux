@@ -318,6 +318,10 @@ _reinstall_specific_tools() {
         reinstall_redis
         case $? in 0) ((reinstalled_count++));; 1) ((failed_count++));; esac
         ;;
+      turso)
+        reinstall_turso
+        case $? in 0) ((reinstalled_count++));; 1) ((failed_count++));; esac
+        ;;
       *)
         log_warn "Unknown database: --$tool"
         ;;
@@ -546,6 +550,10 @@ _reinstall_specific_tools() {
         ;;
       bun)
         reinstall_bun
+        case $? in 0) ((reinstalled_count++));; 1) ((failed_count++));; esac
+        ;;
+      uv)
+        reinstall_uv
         case $? in 0) ((reinstalled_count++));; 1) ((failed_count++));; esac
         ;;
       *)

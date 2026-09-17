@@ -13,6 +13,7 @@ LANGUAGE_PACKAGES=(
 	"clang"
 	"golang"
   "bun"
+  "uv"
 )
 
 source "$(dirname "$BASH_SOURCE")/nodejs/install.sh"
@@ -23,6 +24,7 @@ source "$(dirname "$BASH_SOURCE")/rust/install.sh"
 source "$(dirname "$BASH_SOURCE")/clang/install.sh"
 source "$(dirname "$BASH_SOURCE")/golang/install.sh"
 source "$(dirname "$BASH_SOURCE")/bun/install.sh"
+source "$(dirname "$BASH_SOURCE")/uv/install.sh"
 
 install_all_lang_packages() {
 	local installed_count=0
@@ -60,6 +62,10 @@ install_all_lang_packages() {
 			;;
 		bun)
 			loading "Installing Bun" install_bun
+			case $? in 0) ((installed_count++));; 1) ((failed_count++));; esac
+			;;
+		uv)
+			loading "Installing uv" install_uv
 			case $? in 0) ((installed_count++));; 1) ((failed_count++));; esac
 			;;
 		esac
@@ -106,6 +112,10 @@ uninstall_all_lang_packages() {
 			uninstall_bun
 			case $? in 0) ((uninstalled_count++));; 1) ((failed_count++));; esac
 			;;
+		uv)
+			loading "Uninstalling uv" uninstall_uv
+			case $? in 0) ((uninstalled_count++));; 1) ((failed_count++));; esac
+			;;
 		esac
 	done
 
@@ -138,6 +148,9 @@ update_all_lang_packages() {
 			;;
 		bun)
 			update_bun
+			;;
+		uv)
+			update_uv
 			;;
 		esac
 	done
@@ -180,6 +193,10 @@ reinstall_all_lang_packages() {
 			;;
 		bun)
 			reinstall_bun
+			case $? in 0) ((reinstalled_count++));; 1) ((failed_count++));; esac
+			;;
+		uv)
+			loading "Reinstalling uv" reinstall_uv
 			case $? in 0) ((reinstalled_count++));; 1) ((failed_count++));; esac
 			;;
 		esac

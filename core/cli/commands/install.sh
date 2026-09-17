@@ -15,7 +15,7 @@ install_main() {
     log_info "Available targets:"
     echo
     list_item "lang       - Language packages (Node.js, Python, Perl, PHP, Rust, C, C++, Go)"
-    list_item "db         - Databases (PostgreSQL, MariaDB, SQLite, MongoDB)"
+    list_item "db         - Databases (PostgreSQL, MariaDB, SQLite, MongoDB, Redis, Turso)"
     list_item "ai         - AI tools (OpenCode, Gentle AI, Claude Code, etc.)"
     list_item "editor     - Code editor (Neovim + NvChad)"
     list_item "dev        - Development tools"
@@ -28,7 +28,7 @@ install_main() {
     log_info "Install specific tools with flags:"
     echo
     list_item "core install ai --qwen-code --ollama"
-    list_item "core install db --postgresql --sqlite"
+    list_item "core install db --postgresql --sqlite --turso"
     list_item "core install dev --gh --fzf --jq"
     list_item "Run ${D_CYAN}core list <target>${D_NC} to see all available tools"
     echo
@@ -325,6 +325,10 @@ _install_specific_tools() {
         install_redis
         case $? in 0) ((installed_count++));; 1) ((failed_count++));; esac
         ;;
+      turso)
+        install_turso
+        case $? in 0) ((installed_count++));; 1) ((failed_count++));; esac
+        ;;
       *)
         log_warn "Unknown database: --$tool"
         ;;
@@ -553,6 +557,10 @@ _install_specific_tools() {
         ;;
       bun)
         install_bun
+        case $? in 0) ((installed_count++));; 1) ((failed_count++));; esac
+        ;;
+      uv)
+        install_uv
         case $? in 0) ((installed_count++));; 1) ((failed_count++));; esac
         ;;
       *)
